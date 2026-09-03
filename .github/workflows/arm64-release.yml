@@ -32,11 +32,26 @@ jobs:
         run: |
           echo "Preparing docker images list (.tar.gz) files:"
           find $GITHUB_WORKSPACE -name "*.tar.gz"
+          ls -lh $GITHUB_WORKSPACE/*.tar.gz
           release_name=$(TZ="Asia/Shanghai" date +'%Y-%m-%d %H:%M Build')
           echo "RELEASE_NAME=$release_name" >> $GITHUB_ENV
 
+      - name: Split files exceeding 1.9 GiB
+        run: |
+          MAX_SIZE=$((1900 * 1024 * 1024))
+          for file in $GITHUB_WORKSPACE/*.tar.gz; do
+            file_size=$(stat -c%s "$file")
+            if [ "$file_size" -gt "$MAX_SIZE" ]; then
+              echo "File $(basename "$file") is $(($file_size / 1024 / 1024)) MiB, splitting..."
+              split -b 1900M "$file" "${file}.part-"
+              rm "$file"
+              echo "Split into:"
+              ls -lh "${file}.part-"*
+            fi
+          done
+
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@master
+        uses: softprops/action-gh-release@v2.2.1
         with:
           tag_name: DockerTarBuilder-ARM64
           name: ${{ env.RELEASE_NAME }} for ARM64
@@ -44,6 +59,12 @@ jobs:
             [![Github](https://img.shields.io/badge/RELEASE:DockerTarBuilder-123456?logo=github&logoColor=fff&labelColor=green&style=for-the-badge)](https://www.bilibili.com/video/BV1EZ421M7mL) [![Github](https://img.shields.io/badge/国内加速站下载-FC7C0D?logo=github&logoColor=fff&labelColor=000&style=for-the-badge)](https://wkdaily.cpolar.top/archives/1)
             ### How to use? For example
             `docker load -i alpine_latest.tar.gz `
+            ### 分卷文件合并方法
+            如果文件被分割为 `.part-aa` `.part-ab` 等，下载后执行：
+            ```
+            cat xxx.tar.gz.part-* > xxx.tar.gz
+            docker load -i xxx.tar.gz
+            ```
             ### Video teaching
             [![Bilibili](https://img.shields.io/badge/Bilibili-123456?logo=bilibili&logoColor=fff&labelColor=fb7299)](https://www.bilibili.com/video/BV1yyq6YREdF)
           draft: false
@@ -52,10 +73,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Docker images as release assets
-        uses: softprops/action-gh-release@v2.1.0
+        uses: softprops/action-gh-release@v2.2.1
         with:
           tag_name: DockerTarBuilder-ARM64
-          files: ${{ github.workspace }}/*.tar.gz
+          files: |
+            ${{ github.workspace }}/*.tar.gz
+            ${{ github.workspace }}/*.tar.gz.part-*
           token: ${{ secrets.GITHUB_TOKEN }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
